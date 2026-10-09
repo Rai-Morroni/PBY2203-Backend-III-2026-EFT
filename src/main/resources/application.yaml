@@ -1,0 +1,18 @@
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/bancoxyz_batch?createDatabaseIfNotExist=true
+    username: root
+    password: admin # Cambia esto por la contraseña de tu MySQL local
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+  batch:
+    jdbc:
+      initialize-schema: always # Crea automáticamente las tablas de metadatos de Batch
+    job:
+      enabled: false # Evita que los jobs se ejecuten solos al iniciar la aplicación
+
+server:
+  port: 8080

@@ -1,0 +1,15 @@
+version: '3.8'
+services:
+  mysql-batch:
+    image: mysql:8.0
+    container_name: mysql-batch-db
+    environment:
+      MYSQL_ROOT_PASSWORD: admin
+      MYSQL_DATABASE: bancoxyz_batch
+    ports:
+      - "3306:3306" # Asegurar que el puerto 3306 esté disponible (Recordatorio: la BD del proyecto anterior usa 3306)
+    volumes:
+      - batch-db-data:/var/lib/mysql
+
+volumes:
+  batch-db-data:
