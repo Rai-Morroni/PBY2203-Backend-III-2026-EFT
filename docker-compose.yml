@@ -1,0 +1,243 @@
+# ==========================================
+# Proyecto EFT Semana 9 - Docker Compose
+# ==========================================
+# Este archivo define la infraestructura base y los servicios
+# de la solución bancaria distribuida. Se usa para levantar
+# MySQL, Kafka, Eureka, Config Server y los microservicios.
+#
+# Recomendaciones:
+# - Implementa healthchecks para iniciar dependencias en orden correcto.
+# ==========================================
+
+services:
+  # ==========================================
+  # 1. INFRAESTRUCTURA BASE
+  # ==========================================
+  mysql-batch:
+    image: mysql:8.0
+    container_name: mysql-batch-db
+    environment:
+      MYSQL_ROOT_PASSWORD: admin
+      MYSQL_DATABASE: bancoxyz_batch
+      MYSQL_USER: bancoxyz
+      MYSQL_PASSWORD: admin
+    ports:
+      - "3306:3306"
+    volumes:
+      - batch-db-data:/var/lib/mysql
+    networks:
+      - bancoxyz-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-padmin"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  kafka:
+    image: apache/kafka:3.7.0
+    container_name: bancoxyz-kafka
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:29092"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092,EXTERNAL://localhost:29092"
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+    ports:
+      - "29092:29092"
+    networks:
+      - bancoxyz-net
+    restart: unless-stopped
+
+  # ==========================================
+  # 2. SERVIDORES SPRING CLOUD
+  # ==========================================
+  eureka-server:
+    build: ./eureka-server
+    container_name: eureka-server
+    ports:
+      - "8761:8761"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8761/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - bancoxyz-net
+    restart: unless-stopped
+
+  config-server:
+    build: ./config-server
+    container_name: config-server
+    ports:
+      - "8888:8888"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/ms-bff-web/default"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - bancoxyz-net
+    restart: unless-stopped
+
+  ms-auth-server:
+    build: ./ms-auth-server
+    container_name: ms-auth-server
+    ports:
+      - "9000:9000"
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+    environment:
+      SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8888
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+    networks:
+      - bancoxyz-net
+    restart: unless-stopped
+
+  # ==========================================
+  # 3. MICROSERVICIOS DE NEGOCIO Y BATCH
+  # ==========================================
+  ms-batch-data:
+    build: ./ms-batch-data
+    container_name: ms-batch-data
+    ports:
+      - "8080:8080"
+    depends_on:
+      mysql-batch:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-batch:3306/bancoxyz_batch?createDatabaseIfNotExist=true
+      SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8888
+    networks:
+      - bancoxyz-net
+    restart: unless-stopped
+
+  ms-cuentas:
+    build: ./ms-cuentas
+    container_name: ms-cuentas
+    ports:
+      - "8082:8082"
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+    environment:
+      SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8888
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+    networks:
+      - bancoxyz-net
+    restart: unless-stopped
+
+  ms-pagos:
+    build: ./ms-pagos
+    container_name: ms-pagos
+    ports:
+      - "8083:8083"
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    environment:
+      SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8888
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    networks:
+      - bancoxyz-net
+    restart: unless-stopped
+
+  ms-clientes:
+    build: ./ms-clientes
+    container_name: ms-clientes
+    ports:
+      - "8084:8084"
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    environment:
+      SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8888
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    networks:
+      - bancoxyz-net
+    restart: unless-stopped
+
+  # ==========================================
+  # 4. CAPA DE EXPOSICIÓN (BFF)
+  # ==========================================
+  ms-bff-web:
+    build: ./ms-bff-web
+    container_name: ms-bff-web
+    ports:
+      - "8081:8081"
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+    environment:
+      SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8888
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+    networks:
+      - bancoxyz-net
+    restart: unless-stopped
+
+  ms-bff-movil:
+    build: ./ms-bff-movil
+    container_name: ms-bff-movil
+    ports:
+      - "8085:8085"
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+    environment:
+      SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8888
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+    networks:
+      - bancoxyz-net
+    restart: unless-stopped
+
+  ms-bff-cajero:
+    build: ./ms-bff-cajero
+    container_name: ms-bff-cajero
+    ports:
+      - "8086:8086"
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+    environment:
+      SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8888
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+    networks:
+      - bancoxyz-net
+    restart: unless-stopped
+
+volumes:
+  batch-db-data:
+
+networks:
+  bancoxyz-net:
+    driver: bridge

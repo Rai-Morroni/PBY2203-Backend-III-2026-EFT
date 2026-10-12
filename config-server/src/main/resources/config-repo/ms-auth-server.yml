@@ -1,0 +1,16 @@
+server:
+  port: 9000
+
+spring:
+  application:
+    name: ms-auth-server
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://eureka-server:8761/eureka/
+
+# Habilita los logs de seguridad para ver en la consola cuando se generen los tokens
+logging:
+  level:
+    org.springframework.security: INFO

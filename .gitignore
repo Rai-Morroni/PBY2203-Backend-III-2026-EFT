@@ -1,0 +1,8 @@
+target/
+.vscode/
+.idea/
+HELP.md
+.env
+*.pem
+*.p12
+*.jks

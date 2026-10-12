@@ -1,0 +1,32 @@
+server:
+  port: 8085
+
+spring:
+  application:
+    name: ms-bff-movil
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://ms-auth-server:9000
+  cloud:
+    openfeign:
+      circuitbreaker:
+        enabled: true # Vital para que Resilience4j intercepte las llamadas de Feign
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://eureka-server:8761/eureka/
+
+# Configuración del Circuit Breaker
+resilience4j:
+  circuitbreaker:
+    instances:
+      cuentasCB: # Este nombre debe coincidir con el name="" en anotación @CircuitBreaker
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        permittedNumberOfCallsInHalfOpenState: 3
+        waitDurationInOpenState: 10s
+        failureRateThreshold: 50
