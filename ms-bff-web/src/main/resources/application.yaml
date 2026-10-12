@@ -1,0 +1,5 @@
+spring:
+  application:
+    name: ms-bff-web
+  config:
+    import: optional:configserver:http://localhost:8888
