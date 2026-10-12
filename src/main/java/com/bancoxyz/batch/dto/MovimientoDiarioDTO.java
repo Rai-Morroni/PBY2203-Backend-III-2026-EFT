@@ -3,9 +3,12 @@ package com.bancoxyz.batch.dto;
 import lombok.Data;
 
 @Data
-public class MovimientoDiarioDTO { // DTO para representar los datos de un movimiento diario
-    private String id;
+public class MovimientoDiarioDTO implements SourceRecord {
+    private String cuentaId;
     private String fecha;
-    private String monto;
     private String tipo;
+    private String monto;
+    private String archivoOrigen;
+    private int lineaOrigen;
+    private String contenidoOriginal;
 }
